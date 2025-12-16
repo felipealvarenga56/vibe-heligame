@@ -1,0 +1,23 @@
+{
+  "audio": {
+    "master_volume": 0.7,
+    "sfx_volume": 0.8,
+    "audio_enabled": true
+  },
+  "visual_effects": {
+    "particle_intensity": 1.5,
+    "explosion_intensity": 1.0,
+    "trail_intensity": 1.0,
+    "screen_shake": true
+  },
+  "terrain": {
+    "complexity": 2.0,
+    "destructible_terrain": true,
+    "varied_terrain": true
+  },
+  "gameplay": {
+    "turn_timer": 30,
+    "wind_effects": false,
+    "gravity_strength": 1.0
+  }
+}
