@@ -19,17 +19,22 @@ pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
 # Constants - Sunrise Phase Colors
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
-FPS = 60
+FPS = 120  # Increased for smoother movement
 
 # Sunrise Color Palette
 COLORS = {
-    'sky_upper': (214, 234, 248),      # #D6EAF8 - Soft Sky Blue
-    'horizon': (250, 215, 160),        # #FAD7A0 - Pale Morning Gold
+    'sky_upper': (135, 206, 250),      # Crisp bright blue sky
+    'sky_lower': (176, 224, 255),      # Lighter blue for gradient
+    'horizon': (255, 248, 220),        # Light cream horizon
     'water_foam': (232, 248, 245),     # #E8F8F5 - Mint Foam
     'player_coral': (255, 127, 80),    # #FF7F50 - Coral (Players)
     'text_slate': (93, 109, 126),      # #5D6D7E - Slate Gray
     'ui_blush': (253, 237, 236),       # #FDEDEC - Blush White
-    'sand': (245, 222, 179),           # Sandy beach color
+    'sand': (194, 154, 108),           # Darker, more saturated sand for better contrast
+    'sand_highlight': (220, 180, 140), # Lighter sand for dune highlights
+    'sand_shadow': (160, 120, 80),     # Darker sand for dune shadows
+    'mountain': (101, 67, 33),         # Dark brown for visible mountains/high terrain
+    'mountain_shadow': (80, 50, 25),   # Even darker brown for mountain shadows
     'palm_trunk': (139, 69, 19),       # Palm tree trunk
     'palm_leaves': (34, 139, 34)       # Palm tree leaves
 }
@@ -1071,8 +1076,8 @@ class Player:
         self.velocity_x = 0
         self.velocity_y = 0
         self.on_ground = False
-        self.move_speed = 3
-        self.jump_power = -15
+        self.move_speed = 9  # 1.5x faster for ultra-responsive movement
+        self.jump_power = -18  # Reasonable jump height
         
         # Weapon system
         self.aim_angle = -45 if player_id == 0 else -135  # Default angles
@@ -1086,9 +1091,9 @@ class Player:
         old_y = self.y
         was_on_ground = self.on_ground
         
-        # Apply gravity
+        # Apply proper gravity for good jump feel
         if not self.on_ground:
-            self.velocity_y += 0.8
+            self.velocity_y += 0.75
         
         # Update position
         self.x += self.velocity_x
@@ -1135,22 +1140,22 @@ class Player:
                     audio_manager.play_movement_sound('land')
                 self.velocity_y = 0
             
-            # Apply slope physics when on ground
-            if abs(slope_angle) > 2:  # Only apply slope physics for significant slopes
-                slope_factor = math.sin(math.radians(slope_angle)) * 0.3
+            # Apply minimal slope physics for smoother movement
+            if abs(slope_angle) > 5:  # Only apply to very steep slopes
+                slope_factor = math.sin(math.radians(slope_angle)) * 0.1  # Much reduced impact
                 
-                # Slope affects movement - harder to move uphill, easier downhill
+                # Very light slope effects for realism without sluggishness
                 if abs(self.velocity_x) > 0.1:
                     if (self.velocity_x > 0 and slope_angle > 0) or (self.velocity_x < 0 and slope_angle < 0):
-                        # Moving uphill - reduce speed
-                        self.velocity_x *= (1.0 - abs(slope_factor) * 0.5)
+                        # Moving uphill - minimal speed reduction
+                        self.velocity_x *= (1.0 - abs(slope_factor) * 0.2)
                     else:
-                        # Moving downhill - slight speed increase
-                        self.velocity_x *= (1.0 + abs(slope_factor) * 0.2)
+                        # Moving downhill - minimal speed increase
+                        self.velocity_x *= (1.0 + abs(slope_factor) * 0.1)
                 
-                # Gravity component along slope when not actively moving
-                if abs(self.velocity_x) < 1.0:
-                    gravity_component = slope_factor * 0.5
+                # Reduced gravity component along slope
+                if abs(self.velocity_x) < 0.5:
+                    gravity_component = slope_factor * 0.2
                     self.velocity_x += gravity_component
             
             self.on_ground = True
@@ -1202,8 +1207,8 @@ class Player:
         # Keep player on screen
         self.x = max(0, min(SCREEN_WIDTH - self.width, self.x))
         
-        # Friction
-        self.velocity_x *= 0.8
+        # Minimal friction for instant stops and starts
+        self.velocity_x *= 0.95
     
     def move_left(self, audio_manager=None):
         self.velocity_x = -self.move_speed
@@ -1240,7 +1245,7 @@ class Player:
         fire_y = self.y + self.height / 2
         
         # Calculate velocity based on angle and power
-        power_multiplier = self.power / 100.0 * 20  # Max velocity of 20
+        power_multiplier = self.power / 100.0 * 30  # Increased max velocity to 30 for longer range
         velocity_x = math.cos(math.radians(self.aim_angle)) * power_multiplier
         velocity_y = math.sin(math.radians(self.aim_angle)) * power_multiplier
         
@@ -1513,41 +1518,73 @@ class TerrainGenerator:
         self.base_ground_level = SCREEN_HEIGHT - 100
         
     def generate_height_map(self, width, complexity=1.0):
-        """Creates varied terrain profile using sine waves"""
+        """Creates varied terrain profile with sand dunes and varied slopes"""
         height_map = []
         
         # Multiple sine wave layers for natural-looking terrain
-        # Primary wave - main hills and valleys
-        primary_frequency = 0.003 * complexity  # Controls hill spacing
-        primary_amplitude = 60 * complexity     # Controls hill height
+        # Primary wave - main hills and valleys (larger dunes)
+        primary_frequency = 0.002 * complexity  # Slightly lower frequency for bigger dunes
+        primary_amplitude = 80 * complexity     # Increased amplitude for more dramatic dunes
         
-        # Secondary wave - smaller variations
-        secondary_frequency = 0.008 * complexity
-        secondary_amplitude = 25 * complexity
+        # Secondary wave - medium dunes
+        secondary_frequency = 0.006 * complexity
+        secondary_amplitude = 35 * complexity
         
-        # Tertiary wave - fine details
-        tertiary_frequency = 0.02 * complexity
-        tertiary_amplitude = 10 * complexity
+        # Tertiary wave - small dunes and ripples
+        tertiary_frequency = 0.015 * complexity
+        tertiary_amplitude = 15 * complexity
+        
+        # Sand ripple wave - fine surface details
+        ripple_frequency = 0.05 * complexity
+        ripple_amplitude = 5 * complexity
+        
+        # Dune asymmetry wave - creates realistic dune slopes (steep on one side)
+        asymmetry_frequency = 0.004 * complexity
         
         for x in range(width):
             # Combine multiple sine waves for natural terrain
             primary_height = math.sin(x * primary_frequency) * primary_amplitude
             secondary_height = math.sin(x * secondary_frequency) * secondary_amplitude
             tertiary_height = math.sin(x * tertiary_frequency) * tertiary_amplitude
+            ripple_height = math.sin(x * ripple_frequency) * ripple_amplitude
+            
+            # Add asymmetric dune shaping (creates steeper slopes on one side)
+            asymmetry_factor = math.sin(x * asymmetry_frequency)
+            if asymmetry_factor > 0:
+                # Steeper slope on the windward side
+                slope_modifier = asymmetry_factor * 20 * complexity
+                primary_height += slope_modifier
+                secondary_height += slope_modifier * 0.5
             
             # Add some randomness for more natural variation
-            random_variation = (random.random() - 0.5) * 15 * complexity
+            random_variation = (random.random() - 0.5) * 12 * complexity
+            
+            # Create occasional larger dune features
+            if x % 200 == 0:  # Every 200 pixels, chance for a major dune
+                if random.random() < 0.3:  # 30% chance
+                    dune_center = x + random.randint(50, 150)
+                    dune_width = random.randint(80, 120)
+                    dune_height = random.randint(40, 70) * complexity
+                    
+                    # Add dune influence to nearby points
+                    for dx in range(-dune_width//2, dune_width//2):
+                        if 0 <= x + dx < width:
+                            distance_factor = 1 - abs(dx) / (dune_width//2)
+                            if distance_factor > 0:
+                                # Store dune influence for later application
+                                pass
             
             # Calculate final height
             total_height = (self.base_ground_level + 
                           primary_height + 
                           secondary_height + 
                           tertiary_height + 
+                          ripple_height +
                           random_variation)
             
             # Ensure height stays within reasonable bounds
-            min_height = SCREEN_HEIGHT - 200  # Maximum hill height
-            max_height = SCREEN_HEIGHT - 50   # Minimum valley depth
+            min_height = SCREEN_HEIGHT - 220  # Increased range for bigger dunes
+            max_height = SCREEN_HEIGHT - 40   # Allow terrain closer to water
             total_height = max(min_height, min(max_height, total_height))
             
             height_map.append(int(total_height))
@@ -1600,13 +1637,52 @@ class TerrainGenerator:
         
         return updated_trees
     
+    def add_sand_dunes(self, height_map, complexity=1.0):
+        """Add distinctive sand dune features to the terrain"""
+        enhanced_map = height_map.copy()
+        width = len(height_map)
+        
+        # Add several major sand dunes across the map
+        num_dunes = int(3 + complexity * 2)  # 3-5 major dunes
+        
+        for _ in range(num_dunes):
+            # Random dune position and characteristics
+            dune_center = random.randint(100, width - 100)
+            dune_width = random.randint(80, 150)
+            dune_height = random.randint(30, 60) * complexity
+            
+            # Create asymmetric dune shape (steeper on one side)
+            steep_side = random.choice([-1, 1])  # -1 = left steep, 1 = right steep
+            
+            for x in range(max(0, dune_center - dune_width), 
+                          min(width, dune_center + dune_width)):
+                distance_from_center = abs(x - dune_center)
+                
+                if distance_from_center < dune_width:
+                    # Calculate dune influence with asymmetric profile
+                    if (x - dune_center) * steep_side > 0:
+                        # Steep side - sharper falloff
+                        influence = (1 - (distance_from_center / dune_width) ** 1.5)
+                    else:
+                        # Gentle side - gradual falloff
+                        influence = (1 - (distance_from_center / dune_width) ** 0.7)
+                    
+                    if influence > 0:
+                        dune_addition = influence * dune_height
+                        enhanced_map[x] = int(enhanced_map[x] - dune_addition)  # Subtract to make hills
+        
+        return enhanced_map
+    
     def generate_varied_terrain(self, width, complexity=1.0):
-        """Generate complete terrain with hills, valleys, and features"""
-        # Generate base height map
+        """Generate complete terrain with sand dunes, hills, valleys, and features"""
+        # Generate base height map with enhanced dune patterns
         height_map = self.generate_height_map(width, complexity)
         
-        # Smooth the terrain to prevent sharp edges
-        smoothed_height_map = self.smooth_terrain(height_map, iterations=2)
+        # Add distinctive sand dune features
+        dune_enhanced_map = self.add_sand_dunes(height_map, complexity)
+        
+        # Apply light smoothing to prevent sharp edges while preserving dune character
+        smoothed_height_map = self.smooth_terrain(dune_enhanced_map, iterations=1)
         
         return smoothed_height_map
 
@@ -1663,44 +1739,58 @@ class Terrain:
         return False
     
     def draw(self, screen):
-        # Draw sky gradient (sunrise)
+        # Draw crisp blue sky gradient
         for y in range(SCREEN_HEIGHT):
             ratio = y / SCREEN_HEIGHT
-            if ratio < 0.3:
-                color = COLORS['sky_upper']
-            elif ratio < 0.6:
-                # Blend to horizon
-                blend = (ratio - 0.3) / 0.3
+            if ratio < 0.7:
+                # Blend from upper sky to lower sky
+                blend = ratio / 0.7
                 color = (
-                    int(COLORS['sky_upper'][0] * (1-blend) + COLORS['horizon'][0] * blend),
-                    int(COLORS['sky_upper'][1] * (1-blend) + COLORS['horizon'][1] * blend),
-                    int(COLORS['sky_upper'][2] * (1-blend) + COLORS['horizon'][2] * blend)
+                    int(COLORS['sky_upper'][0] * (1-blend) + COLORS['sky_lower'][0] * blend),
+                    int(COLORS['sky_upper'][1] * (1-blend) + COLORS['sky_lower'][1] * blend),
+                    int(COLORS['sky_upper'][2] * (1-blend) + COLORS['sky_lower'][2] * blend)
                 )
             else:
-                color = COLORS['horizon']
+                # Blend to horizon
+                blend = (ratio - 0.7) / 0.3
+                color = (
+                    int(COLORS['sky_lower'][0] * (1-blend) + COLORS['horizon'][0] * blend),
+                    int(COLORS['sky_lower'][1] * (1-blend) + COLORS['horizon'][1] * blend),
+                    int(COLORS['sky_lower'][2] * (1-blend) + COLORS['horizon'][2] * blend)
+                )
             
             pygame.draw.line(screen, color, (0, y), (SCREEN_WIDTH, y))
         
         # Draw destructible terrain using pixel-based system
         self._draw_destructible_terrain(screen)
         
-        # Draw water foam at the edge
-        foam_height = 20
-        pygame.draw.rect(screen, COLORS['water_foam'], 
-                        (0, self.ground_level - foam_height, SCREEN_WIDTH, foam_height))
+        # Draw terrain outline for better definition
+        self._draw_terrain_outline(screen)
+        
+        # Draw water foam at the edge (reduced to avoid white line issues)
+        foam_height = 15
+        # Only draw foam where there's actually low terrain
+        for x in range(0, SCREEN_WIDTH, 10):
+            ground_height = self.get_ground_height(x)
+            if ground_height > SCREEN_HEIGHT - 80:  # Only near water level
+                pygame.draw.rect(screen, COLORS['water_foam'], 
+                               (x, ground_height - foam_height, 10, foam_height))
         
         # Draw palm trees (only non-destroyed ones)
         for tree in self.palm_trees:
             if not tree['destroyed']:
-                self.draw_palm_tree(screen, tree['x'], tree['height'])
+                # Use proper ground height for tree positioning
+                tree_ground_y = tree.get('ground_y', self.get_ground_height(tree['x']))
+                self.draw_palm_tree(screen, tree['x'], tree['height'], tree_ground_y)
     
     def _draw_destructible_terrain(self, screen):
-        """Draw terrain with craters using pixel-based representation"""
-        # For performance, we'll draw terrain in chunks rather than pixel by pixel
+        """Draw terrain with enhanced sand dune shading and better contrast"""
         chunk_size = 4  # Draw 4x4 pixel chunks
         
         for x in range(0, SCREEN_WIDTH, chunk_size):
-            for y in range(self.ground_level, SCREEN_HEIGHT, chunk_size):
+            # Start from much higher to catch mountains
+            start_y = min(self.ground_level, min(self.height_map) if self.height_map else self.ground_level)
+            for y in range(start_y - 50, SCREEN_HEIGHT, chunk_size):
                 # Check if any pixel in this chunk has terrain
                 has_terrain = False
                 for dx in range(chunk_size):
@@ -1713,20 +1803,93 @@ class Terrain:
                         break
                 
                 if has_terrain:
-                    pygame.draw.rect(screen, COLORS['sand'], 
-                                   (x, y, chunk_size, chunk_size))
+                    # Calculate sand color based on terrain slope and height for dune effect
+                    sand_color = self._get_sand_color_for_position(x, y)
+                    pygame.draw.rect(screen, sand_color, (x, y, chunk_size, chunk_size))
     
-    def draw_palm_tree(self, screen, x, height):
+    def _get_sand_color_for_position(self, x, y):
+        """Calculate sand color based on terrain slope and position for dune shading"""
+        # Get terrain heights around this position for slope calculation
+        if x < len(self.height_map) - 10 and x > 10:
+            left_height = self.height_map[max(0, x - 8)]
+            right_height = self.height_map[min(len(self.height_map) - 1, x + 8)]
+            current_height = self.height_map[x] if x < len(self.height_map) else self.ground_level
+            
+            # Check if this is mountain terrain - fill entire mountain area with brown
+            base_ground = SCREEN_HEIGHT - 100
+            height_above_base = base_ground - current_height
+            
+            # If we're in a mountain area (high terrain), fill it completely with brown
+            if height_above_base > 60:  # This is mountain terrain
+                # All mountain terrain gets brown color
+                if height_above_base > 100:
+                    return COLORS['mountain_shadow']  # Very high = dark brown
+                else:
+                    return COLORS['mountain']  # High = brown
+            
+            # Calculate slope for sand shading
+            slope = (right_height - left_height) / 16.0  # Slope over 16 pixels
+            
+            # Determine if this is a slope facing "sunlight" (left side = highlight, right side = shadow)
+            if slope > 2:  # Steep upward slope (shadow side)
+                return COLORS['sand_shadow']
+            elif slope < -2:  # Steep downward slope (highlight side)
+                return COLORS['sand_highlight']
+            elif abs(slope) > 0.5:  # Moderate slope
+                # Blend between normal and highlight/shadow
+                if slope > 0:
+                    # Slight shadow
+                    blend_factor = min(slope / 2.0, 0.5)
+                    return self._blend_colors(COLORS['sand'], COLORS['sand_shadow'], blend_factor)
+                else:
+                    # Slight highlight
+                    blend_factor = min(abs(slope) / 2.0, 0.5)
+                    return self._blend_colors(COLORS['sand'], COLORS['sand_highlight'], blend_factor)
+            
+            # Add subtle depth shading based on distance from surface
+            surface_distance = y - current_height
+            if surface_distance > 20:  # Deeper underground gets slightly darker
+                depth_factor = min((surface_distance - 20) / 50.0, 0.3)
+                return self._blend_colors(COLORS['sand'], COLORS['sand_shadow'], depth_factor)
+        
+        # Default sand color
+        return COLORS['sand']
+    
+    def _blend_colors(self, color1, color2, factor):
+        """Blend two colors with given factor (0.0 = color1, 1.0 = color2)"""
+        factor = max(0.0, min(1.0, factor))
+        return (
+            int(color1[0] * (1 - factor) + color2[0] * factor),
+            int(color1[1] * (1 - factor) + color2[1] * factor),
+            int(color1[2] * (1 - factor) + color2[2] * factor)
+        )
+    
+    def _draw_terrain_outline(self, screen):
+        """Draw subtle outline on terrain surface for better definition"""
+        outline_color = COLORS['sand_shadow']
+        
+        # Draw outline along the terrain surface
+        for x in range(0, SCREEN_WIDTH - 1, 2):  # Every 2 pixels for performance
+            ground_height = self.get_ground_height(x)
+            
+            # Draw a subtle 1-pixel outline on the terrain surface
+            if ground_height < SCREEN_HEIGHT - 1:
+                pygame.draw.circle(screen, outline_color, (x, int(ground_height)), 1)
+    
+    def draw_palm_tree(self, screen, x, height, ground_y=None):
         trunk_width = 12
         trunk_height = height
         
-        # Trunk
-        pygame.draw.rect(screen, COLORS['palm_trunk'], 
-                        (x - trunk_width//2, self.ground_level - trunk_height, 
-                         trunk_width, trunk_height))
+        # Use actual ground height at tree position
+        if ground_y is None:
+            ground_y = self.get_ground_height(x)
         
-        # Palm fronds (simple)
-        frond_y = self.ground_level - trunk_height
+        # Trunk - positioned on actual terrain
+        trunk_rect = (x - trunk_width//2, int(ground_y - trunk_height), trunk_width, trunk_height)
+        pygame.draw.rect(screen, COLORS['palm_trunk'], trunk_rect)
+        
+        # Palm fronds (simple) - positioned at top of trunk
+        frond_y = int(ground_y - trunk_height)
         for angle in range(0, 360, 45):
             end_x = x + math.cos(math.radians(angle)) * 30
             end_y = frond_y + math.sin(math.radians(angle)) * 15
@@ -1787,7 +1950,7 @@ class GameManager:
                 current_p.charging_power = True
                 current_p.power = 0
             else:
-                current_p.power = min(100, current_p.power + 3)
+                current_p.power = min(100, current_p.power + 5)  # Faster power charging
                 # Add charging visual effect
                 fire_x = current_p.x + current_p.width / 2
                 fire_y = current_p.y + current_p.height / 2
