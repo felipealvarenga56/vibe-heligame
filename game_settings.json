@@ -11,7 +11,7 @@
     "screen_shake": true
   },
   "terrain": {
-    "complexity": 0.5,
+    "complexity": 2.0,
     "destructible_terrain": true,
     "varied_terrain": true
   },

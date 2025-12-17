@@ -448,11 +448,22 @@ class EffectsManager:
         self.particle_systems['trails'].add_trail_particles(x, y, velocity_x, velocity_y, weapon_type, power_level)
     
     def create_weapon_charge_effect(self, x, y, power_level):
-        """Create charging effect for weapons with enhanced visuals"""
+        """Create charging effect for weapons with enhanced visuals at 25%, 50%, 75%, 100% thresholds"""
         if power_level > 10:  # Show effect earlier
             # Scale effect intensity with power level
             intensity = power_level / 100.0
-            particle_count = int(2 + intensity * 4)  # More particles at higher power
+            
+            # Escalating particle count at thresholds: 25%, 50%, 75%, 100%
+            if power_level >= 100:
+                particle_count = 8  # Maximum particles at 100%
+            elif power_level >= 75:
+                particle_count = 6  # High particles at 75%+
+            elif power_level >= 50:
+                particle_count = 4  # Medium particles at 50%+
+            elif power_level >= 25:
+                particle_count = 3  # Low particles at 25%+
+            else:
+                particle_count = 2  # Minimal particles below 25%
             
             # Add sparkling particles around the weapon
             for _ in range(particle_count):
@@ -465,15 +476,26 @@ class EffectsManager:
                 vel_x = math.cos(angle + math.pi/2) * 0.5
                 vel_y = math.sin(angle + math.pi/2) * 0.5 - 0.3  # Slight upward drift
                 
-                # Color changes with power level
-                if power_level < 30:
-                    spark_color = (255, 255, 150)  # Pale yellow
-                elif power_level < 60:
-                    spark_color = (255, 200, 0)    # Orange-yellow
+                # Color changes at thresholds: 25%, 50%, 75%, 100%
+                if power_level >= 100:
+                    spark_color = (255, 50, 0)     # Intense red at 100%
+                elif power_level >= 75:
+                    spark_color = (255, 100, 0)   # Bright orange-red at 75%+
+                elif power_level >= 50:
+                    spark_color = (255, 200, 0)   # Orange-yellow at 50%+
+                elif power_level >= 25:
+                    spark_color = (255, 255, 100) # Yellow at 25%+
                 else:
-                    spark_color = (255, 100, 0)    # Bright orange-red
+                    spark_color = (255, 255, 150) # Pale yellow below 25%
                 
-                particle_size = 1 if power_level < 50 else 2
+                # Particle size scales with thresholds
+                if power_level >= 75:
+                    particle_size = 3
+                elif power_level >= 50:
+                    particle_size = 2
+                else:
+                    particle_size = 1
+                    
                 particle_lifetime = int(10 + intensity * 15)
                 
                 self.particle_systems['environment'].add_particle(
@@ -481,12 +503,13 @@ class EffectsManager:
                     spark_color, particle_size, particle_lifetime
                 )
             
-            # Add central charging glow at high power levels
-            if power_level > 70:
-                # Central glow particle
+            # Add central charging glow at 75%+ power levels
+            if power_level >= 75:
+                # Central glow particle - larger at 100%
+                glow_size = 4 if power_level >= 100 else 3
                 self.particle_systems['environment'].add_particle(
                     x, y, 0, 0, "fire",
-                    (255, 255, 255), 3, 5
+                    (255, 255, 255), glow_size, 5
                 )
     
     def update_all_effects(self):
@@ -1076,8 +1099,14 @@ class Player:
         self.velocity_x = 0
         self.velocity_y = 0
         self.on_ground = False
-        self.move_speed = 9  # 1.5x faster for ultra-responsive movement
-        self.jump_power = -18  # Reasonable jump height
+        
+        # ARCADE MOVEMENT CONSTANTS - Instant response, no momentum
+        self.move_speed = 6  # Direct position change per frame (not velocity)
+        self.jump_power = -18  # Strong initial jump impulse
+        self.gravity = 1.5  # High gravity for tight, snappy jumps
+        self.max_fall_speed = 20  # Terminal velocity
+        self.is_jumping = False  # Track if jump button is held
+        self.moving = False  # Track if movement key is pressed this frame
         
         # Weapon system
         self.aim_angle = -45 if player_id == 0 else -135  # Default angles
@@ -1086,150 +1115,115 @@ class Player:
         self.current_weapon = "rocket"  # "rocket", "banana", "melee"
         
     def update(self, terrain, audio_manager=None):
-        # Store old position for collision detection
-        old_x = self.x
+        """Pure arcade physics - instant movement, tight jumps, no sliding"""
         old_y = self.y
-        was_on_ground = self.on_ground
         
-        # Apply proper gravity for good jump feel
-        if not self.on_ground:
-            self.velocity_y += 0.75
+        # HORIZONTAL MOVEMENT - Direct position control, NO velocity/friction
+        # Movement is handled directly in move_left/move_right
+        # If not moving this frame, velocity is zero (instant stop)
+        if not self.moving:
+            self.velocity_x = 0
+        self.moving = False  # Reset for next frame
         
-        # Update position
+        # Apply horizontal movement
         self.x += self.velocity_x
+        
+        # VERTICAL PHYSICS - Gravity and jumping
+        if not self.on_ground:
+            self.velocity_y += self.gravity
+            # Cap fall speed
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+        
+        # Apply vertical movement
         self.y += self.velocity_y
         
-        # Check ground collision with enhanced terrain system and slope physics
+        # GROUND COLLISION - Simple and fast
         ground_collision = False
-        
-        # Check multiple points along player width for more accurate collision
-        collision_points = [
-            self.x + 2,  # Left edge
-            self.x + self.width // 2,  # Center
-            self.x + self.width - 2  # Right edge
-        ]
-        
         min_ground_height = terrain.terrain_map.height
-        collision_found = False
-        slope_angle = 0
         
-        for check_x in collision_points:
-            # Get accurate ground height by scanning from player position
+        # Check 3 points under player for ground
+        for check_x in [self.x + 4, self.x + self.width // 2, self.x + self.width - 4]:
             ground_y = terrain.terrain_map.get_accurate_ground_height(check_x, self.y)
-            
-            # Check if player's bottom is at or below ground level
             if self.y + self.height >= ground_y:
                 min_ground_height = min(min_ground_height, ground_y)
-                collision_found = True
+                ground_collision = True
         
-        if collision_found:
-            # Calculate terrain slope for physics
-            left_height = terrain.terrain_map.get_accurate_ground_height(self.x, self.y)
-            right_height = terrain.terrain_map.get_accurate_ground_height(self.x + self.width, self.y)
-            
-            # Calculate slope angle in degrees
-            height_diff = right_height - left_height
-            slope_angle = math.degrees(math.atan2(height_diff, self.width))
-            
-            # Position player on slope
+        if ground_collision:
+            # Snap to ground - instant, no sliding
             self.y = min_ground_height - self.height
             
-            if self.velocity_y > 0:  # Only stop downward velocity
-                # Play landing sound if falling with significant velocity
-                if audio_manager and self.velocity_y > 5:
+            # Landing
+            if self.velocity_y > 0:
+                if audio_manager and self.velocity_y > 8:
                     audio_manager.play_movement_sound('land')
                 self.velocity_y = 0
             
-            # Apply minimal slope physics for smoother movement
-            if abs(slope_angle) > 5:  # Only apply to very steep slopes
-                slope_factor = math.sin(math.radians(slope_angle)) * 0.1  # Much reduced impact
-                
-                # Very light slope effects for realism without sluggishness
-                if abs(self.velocity_x) > 0.1:
-                    if (self.velocity_x > 0 and slope_angle > 0) or (self.velocity_x < 0 and slope_angle < 0):
-                        # Moving uphill - minimal speed reduction
-                        self.velocity_x *= (1.0 - abs(slope_factor) * 0.2)
-                    else:
-                        # Moving downhill - minimal speed increase
-                        self.velocity_x *= (1.0 + abs(slope_factor) * 0.1)
-                
-                # Reduced gravity component along slope
-                if abs(self.velocity_x) < 0.5:
-                    gravity_component = slope_factor * 0.2
-                    self.velocity_x += gravity_component
-            
             self.on_ground = True
-            ground_collision = True
         else:
             self.on_ground = False
         
-        # Check palm tree collisions (only for non-destroyed trees)
-        tree_collision = False
+        # TREE COLLISION - Simplified
         for tree in terrain.palm_trees:
             if tree['destroyed']:
                 continue
-                
-            tree_left = tree['x'] - 6  # Half trunk width
+            
+            tree_left = tree['x'] - 6
             tree_right = tree['x'] + 6
             tree_top = terrain.ground_level - tree['height']
             tree_bottom = terrain.ground_level
             
-            # Check if player overlaps with tree trunk
             if (self.x < tree_right and self.x + self.width > tree_left and
                 self.y < tree_bottom and self.y + self.height > tree_top):
                 
-                # Check if player is landing on top of tree (from above)
-                if (old_y + self.height <= tree_top + 5 and self.velocity_y >= 0):
-                    # Land on top of tree
+                # Landing on tree top
+                if old_y + self.height <= tree_top + 8 and self.velocity_y >= 0:
                     self.y = tree_top - self.height
-                    # Play landing sound if falling with significant velocity
-                    if audio_manager and self.velocity_y > 5:
+                    if audio_manager and self.velocity_y > 8:
                         audio_manager.play_movement_sound('land')
                     self.velocity_y = 0
                     self.on_ground = True
-                    tree_collision = True
                     break
                 else:
-                    # Side collision - push player away
-                    if old_x + self.width/2 < tree['x']:  # Player was on the left
+                    # Side collision - push out
+                    player_center = self.x + self.width / 2
+                    if player_center < tree['x']:
                         self.x = tree_left - self.width
-                    else:  # Player was on the right
+                    else:
                         self.x = tree_right
-                    self.velocity_x = 0
-                    tree_collision = True
         
-        # If we had a tree collision that put us on top, override ground collision
-        if tree_collision and self.on_ground:
-            pass  # Stay on tree
-        elif not tree_collision and not ground_collision:
-            self.on_ground = False
-            
-        # Keep player on screen
+        # Screen bounds
         self.x = max(0, min(SCREEN_WIDTH - self.width, self.x))
-        
-        # Minimal friction for instant stops and starts
-        self.velocity_x *= 0.95
     
     def move_left(self, audio_manager=None):
+        """Instant left movement - no acceleration, no momentum"""
         self.velocity_x = -self.move_speed
-        # Play movement sound occasionally to avoid spam
-        if audio_manager and random.randint(1, 10) == 1:  # 10% chance per frame
+        self.moving = True
+        if audio_manager and random.randint(1, 15) == 1:
             audio_manager.play_movement_sound('move')
         
     def move_right(self, audio_manager=None):
+        """Instant right movement - no acceleration, no momentum"""
         self.velocity_x = self.move_speed
-        # Play movement sound occasionally to avoid spam
-        if audio_manager and random.randint(1, 10) == 1:  # 10% chance per frame
+        self.moving = True
+        if audio_manager and random.randint(1, 15) == 1:
             audio_manager.play_movement_sound('move')
         
     def jump(self, audio_manager=None):
+        """Instant jump - full power immediately"""
         if self.on_ground:
             self.velocity_y = self.jump_power
             self.on_ground = False
-            
-            # Play jump sound
+            self.is_jumping = True
             if audio_manager:
                 audio_manager.play_movement_sound('jump')
+    
+    def release_jump(self):
+        """Variable jump height - cut jump short when released"""
+        if self.is_jumping and self.velocity_y < -5:
+            # Cut upward velocity significantly for short hops
+            self.velocity_y *= 0.4
+        self.is_jumping = False
     
     def fire_weapon(self, audio_manager=None):
         """Fire the current weapon with current angle and power"""
@@ -1935,6 +1929,9 @@ class GameManager:
                 current_p.move_right(self.audio_manager)
             if keys[pygame.K_SPACE]:
                 current_p.jump(self.audio_manager)
+            else:
+                # Release jump for variable jump height
+                current_p.release_jump()
         
         # Aiming
         if keys[pygame.K_UP] or keys[pygame.K_w]:
@@ -1950,14 +1947,17 @@ class GameManager:
                 current_p.charging_power = True
                 current_p.power = 0
             else:
-                current_p.power = min(100, current_p.power + 5)  # Faster power charging
+                current_p.power = min(100, current_p.power + 10)  # Arcade-fast power charging (2x faster)
                 # Add charging visual effect
                 fire_x = current_p.x + current_p.width / 2
                 fire_y = current_p.y + current_p.height / 2
                 self.effects_manager.create_weapon_charge_effect(fire_x, fire_y, current_p.power)
                 
-                # Play power charging sound periodically
-                if current_p.power % 20 == 0:  # Play sound every 20% power increase
+                # Play power charging sound - continuous above 50% (Requirement 3.5)
+                if current_p.power > 50:
+                    # Continuous charging audio above 50% power
+                    self.audio_manager.play_power_sound('charge')
+                elif current_p.power % 25 == 0:  # Play sound at 25% thresholds below 50%
                     self.audio_manager.play_power_sound('charge')
         
         # Handle key releases and weapon switching
